@@ -10,13 +10,20 @@
     {
       "name": "frontend-design",
       "description": "Build distinctive, production-grade frontend interfaces. Hardens the upstream frontend-design skill with bundled font/palette references, AI-slop anti-patterns, an accessibility floor, and a WCAG contrast verification script.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "katlun-lgtm"
       },
       "source": "./plugins/frontend-design",
       "category": "design",
-      "tags": ["frontend", "design", "css", "accessibility", "wcag", "ui"]
+      "tags": [
+        "frontend",
+        "design",
+        "css",
+        "accessibility",
+        "wcag",
+        "ui"
+      ]
     }
   ]
 }

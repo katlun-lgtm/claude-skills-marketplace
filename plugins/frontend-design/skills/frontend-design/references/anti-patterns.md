@@ -16,6 +16,7 @@ If your output matches three or more, restart the aesthetic direction:
 8. **Glassmorphism** (`backdrop-filter: blur(20px)` on white-translucent cards) — when overused
 9. **Aurora / blurred-blob backgrounds** — 2021 dribbble cliché
 10. **Bento grid clone** — uneven rectangles, soft shadows, white bg, Inter labels (Apple/Linear knockoff)
+11. **`prefers-color-scheme` ignored** — single-mode-only sites in 2026 read as half-shipped; support both light and dark unless the brand explicitly requires one
 
 ## Layout Slop
 
