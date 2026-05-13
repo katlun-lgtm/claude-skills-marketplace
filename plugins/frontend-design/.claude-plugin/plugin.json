@@ -1,7 +1,7 @@
 {
   "name": "frontend-design",
   "description": "Build distinctive, production-grade frontend interfaces. Bundles font/palette references, AI-slop anti-patterns, accessibility floor, and a WCAG contrast verification script.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "katlun-lgtm"
   }

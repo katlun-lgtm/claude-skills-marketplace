@@ -79,6 +79,34 @@ Every design must clear all of these before being marked done.
 - Selected states need a shape change (border, weight), not just color
 - Links inside body text need underline OR ≥3:1 contrast against surrounding text PLUS a hover/focus affordance
 
+## Data Visualization Floor
+
+Charts and graphs add accessibility concerns beyond UI.
+
+### Series distinguishability
+- Multiple data series (lines, bars, areas) must be distinguishable WITHOUT relying on color alone
+- **Each series gets a non-color encoding**: stroke pattern (solid / dotted / dashed), marker shape (circle / triangle / square), label position, or texture fill
+- Aim for **3:1 luminance contrast between adjacent series**. If not achievable, the non-color encoding MUST carry the distinction
+- Test: render the chart in greyscale. If two series become indistinguishable, the design fails for achromatopsia, B&W print, and old projectors
+
+### Color-blind safety
+- Avoid red/green as the only distinction between positive/negative (the most common form of colorblindness is red-green)
+- Use red + blue OR magenta + green for binary states, OR add ↑/↓ markers
+- A 3-series palette where all three are near-equal luminance and only differ in hue is the worst case — pick varied luminances even if you ALSO use varied stroke patterns
+
+### Chart labels
+- Axis labels: 11-12px minimum, 4.5:1 contrast against the plot background
+- Tooltip / annotation boxes: full body contrast (4.5:1), background should be opaque (not blurry-translucent over data)
+- Numeric tick labels prefer tabular-figures fonts (`font-feature-settings: 'tnum' 1`) — non-tabular nums shift column widths between values
+
+### Markers + meaningful shapes
+- Use shape to encode meaning, not just color (▲ entry, ▼ exit, ◆ event)
+- Don't put 6 different colors on one chart; humans can't distinguish that many in a glance
+
+### Tooling
+- Run `scripts/check-contrast.py --check-series` to surface pairwise series-vs-series luminance contrast
+- Low contrast there isn't an automatic failure — but you must verify a non-color encoding is in place
+
 ## Performance Floor
 
 - Largest Contentful Paint < 2.5s on simulated 4G
@@ -101,5 +129,6 @@ Before declaring done, walk this list out loud:
 8. Does `prefers-reduced-motion: reduce` produce a sane non-animated view?
 9. Did you render at 360px, 768px, and 1440px?
 10. Is the code production-grade — no `console.log`, no `TODO`, no placeholder lorem outside intentional design?
+11. If the design includes charts/graphs: did you render in greyscale (or imagine it) and confirm every series is still distinguishable via non-color encoding?
 
 Any "no" = not done.

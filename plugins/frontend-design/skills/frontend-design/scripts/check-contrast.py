@@ -11,6 +11,7 @@ Usage:
     check-contrast.py <file> --scope '[data-theme="dark"]'
     check-contrast.py <file> --check-themes         # verify both :root AND [data-theme="dark"]
     check-contrast.py <file> --check-themes --strict
+    check-contrast.py <file> --check-series         # advisory: pairwise luminance among --series-*
 
 Reads CSS variable declarations (`--name: #hex`) from any text file
 (CSS, HTML with embedded <style>, JSX, etc). Computes WCAG 2.x relative
@@ -51,7 +52,7 @@ MUTED_TOKENS = {"muted", "rule", "hair", "hairline", "hint", "border", "divider"
 
 # Tokens that represent alternate surfaces, not foreground text. Skipped from
 # the 4.5:1 text-contrast check; instead checked at 3:1 for UI distinguishability.
-SURFACE_TOKENS = {"bg", "background", "surface", "canvas", "panel", "card", "well", "shell", "paper", "page", "sheet"}
+SURFACE_TOKENS = {"bg", "background", "surface", "canvas", "panel", "card", "well", "shell", "paper", "page", "sheet", "plot", "tile", "mat"}
 
 
 def parse_hex(s: str) -> tuple[int, int, int]:
@@ -183,6 +184,44 @@ def pick_base(palette: dict[str, tuple[int, int, int]], requested: str | None) -
     return base
 
 
+def report_series(palette: dict[str, tuple[int, int, int]], prefix: str = "--series") -> None:
+    """
+    Print pairwise luminance contrast among series tokens (data-viz lines/areas).
+
+    For charts, WCAG suggests 3:1 luminance between adjacent series. If a pair
+    falls below 3:1, the design MUST use non-color encoding (stroke pattern,
+    marker shape, label) to remain distinguishable in B&W / for achromatopsia.
+    This is advisory: the script can detect low contrast but cannot detect
+    whether pattern encoding is present.
+    """
+    series = [(k, v) for k, v in palette.items() if k.startswith(prefix)]
+    if len(series) < 2:
+        return
+
+    print(f"{BOLD}series-vs-series luminance contrast{RESET}")
+    print(f"{DIM}{'-' * 60}{RESET}")
+    low_pairs: list[tuple[str, str, float]] = []
+    for i, (a_name, a_rgb) in enumerate(series):
+        for b_name, b_rgb in series[i + 1 :]:
+            ratio = contrast_ratio(a_rgb, b_rgb)
+            if ratio >= 3.0:
+                color, glabel = GREEN, "OK"
+            elif ratio >= 1.5:
+                color, glabel = YELLOW, "LOW"
+                low_pairs.append((a_name, b_name, ratio))
+            else:
+                color, glabel = RED, "VERY LOW"
+                low_pairs.append((a_name, b_name, ratio))
+            print(f"  {a_name:<14} {DIM}<>{RESET} {b_name:<14} {ratio:5.2f}:1   {color}{glabel}{RESET}")
+
+    if low_pairs:
+        print()
+        print(f"{YELLOW}{BOLD}advisory{RESET}  {len(low_pairs)} series pair(s) below 3:1 luminance contrast")
+        print(f"{DIM}  → ensure each series uses a non-color encoding (stroke pattern,{RESET}")
+        print(f"{DIM}    marker shape, label position) so it remains distinguishable in B&W{RESET}")
+        print(f"{DIM}    or for users with achromatopsia.{RESET}")
+
+
 def report_palette(
     palette: dict[str, tuple[int, int, int]],
     base: str,
@@ -259,6 +298,8 @@ def main() -> int:
     p.add_argument("--strict", action="store_true", help="exit 1 if any non-muted token fails 4.5:1 vs base")
     p.add_argument("--scope", help="CSS selector to scope variable extraction within (e.g. ':root' or '[data-theme=\"dark\"]')")
     p.add_argument("--check-themes", action="store_true", help="verify both :root AND [data-theme=\"dark\"] palettes; combined exit code")
+    p.add_argument("--check-series", action="store_true", help="also report pairwise luminance contrast among --series-* tokens (data-viz advisory)")
+    p.add_argument("--series-prefix", default="--series", help="prefix for series tokens (default: --series)")
     args = p.parse_args()
 
     src = Path(args.file)
@@ -291,6 +332,9 @@ def main() -> int:
                 total_failures += 1
                 continue
             total_failures += report_palette(palette, base, label=f"({theme_label})", pairs=args.pairs)
+            if args.check_series:
+                print()
+                report_series(palette, args.series_prefix)
             print()
         if total_failures > 0 and args.strict:
             return 1
@@ -315,6 +359,9 @@ def main() -> int:
 
     label = f"({args.scope})" if args.scope else f"{src}"
     failures = report_palette(palette, base, label=label, pairs=args.pairs)
+    if args.check_series:
+        print()
+        report_series(palette, args.series_prefix)
     if failures > 0 and args.strict:
         return 1
     return 0
