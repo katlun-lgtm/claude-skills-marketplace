@@ -37,7 +37,7 @@ VAR_RE = re.compile(
 
 # Tokens that are EXPECTED to fail body-text contrast (hint/decorative text).
 # Flagged as info, not failure, in --strict mode.
-MUTED_TOKENS = {"muted", "rule", "hint", "border", "divider", "subtle", "ghost"}
+MUTED_TOKENS = {"muted", "rule", "hair", "hairline", "hint", "border", "divider", "subtle", "ghost"}
 
 # Tokens that represent alternate surfaces, not foreground text. Skipped from
 # the 4.5:1 text-contrast check; instead checked at 3:1 for UI distinguishability.
