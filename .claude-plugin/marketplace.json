@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "katlun-skills",
+  "version": "0.1.0",
+  "description": "Opinionated Claude Code skills with bundled references and verification scripts",
+  "owner": {
+    "name": "katlun-lgtm"
+  },
+  "plugins": [
+    {
+      "name": "frontend-design",
+      "description": "Build distinctive, production-grade frontend interfaces. Hardens the upstream frontend-design skill with bundled font/palette references, AI-slop anti-patterns, an accessibility floor, and a WCAG contrast verification script.",
+      "version": "0.1.0",
+      "author": {
+        "name": "katlun-lgtm"
+      },
+      "source": "./plugins/frontend-design",
+      "category": "design",
+      "tags": ["frontend", "design", "css", "accessibility", "wcag", "ui"]
+    }
+  ]
+}
