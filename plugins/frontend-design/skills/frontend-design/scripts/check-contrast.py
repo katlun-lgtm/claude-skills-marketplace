@@ -41,7 +41,7 @@ MUTED_TOKENS = {"muted", "rule", "hair", "hairline", "hint", "border", "divider"
 
 # Tokens that represent alternate surfaces, not foreground text. Skipped from
 # the 4.5:1 text-contrast check; instead checked at 3:1 for UI distinguishability.
-SURFACE_TOKENS = {"bg", "background", "surface", "canvas", "panel", "card", "well", "shell"}
+SURFACE_TOKENS = {"bg", "background", "surface", "canvas", "panel", "card", "well", "shell", "paper", "page", "sheet"}
 
 
 def parse_hex(s: str) -> tuple[int, int, int]:
