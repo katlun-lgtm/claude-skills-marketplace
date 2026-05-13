@@ -3,14 +3,24 @@
 check-contrast.py — WCAG 2.x contrast ratio checker for CSS variable palettes.
 
 Usage:
-    check-contrast.py <file>              # auto-detect --bg, report vs --bg
-    check-contrast.py <file> --bg <name>  # use a specific token as the base
-    check-contrast.py <file> --pairs      # report ALL pairwise ratios
-    check-contrast.py <file> --strict     # exit 1 if any non-muted token < 4.5:1
+    check-contrast.py <file>                        # auto-detect --bg, report vs --bg
+    check-contrast.py <file> --bg <name>            # use a specific token as the base
+    check-contrast.py <file> --pairs                # report ALL pairwise ratios
+    check-contrast.py <file> --strict               # exit 1 if any non-muted token < 4.5:1
+    check-contrast.py <file> --scope ':root'        # scope variable extraction to a CSS block
+    check-contrast.py <file> --scope '[data-theme="dark"]'
+    check-contrast.py <file> --check-themes         # verify both :root AND [data-theme="dark"]
+    check-contrast.py <file> --check-themes --strict
 
 Reads CSS variable declarations (`--name: #hex`) from any text file
 (CSS, HTML with embedded <style>, JSX, etc). Computes WCAG 2.x relative
 luminance and contrast ratios using the official formula.
+
+For dual-theme designs (light + dark via `[data-theme="dark"]`), use
+`--check-themes` to verify both palettes in one run. Without `--scope`,
+the script extracts every `--var:` declaration in the file, so for
+multi-theme stylesheets the *last* definition wins — silently masking
+contrast bugs in the other theme. `--check-themes` solves that.
 
 No network calls, no dependencies beyond the stdlib. Designed to run in
 the frontend-design skill workflow before declaring a design done.
@@ -104,6 +114,34 @@ def grade(ratio: float) -> tuple[str, str]:
     return ("FAIL", RED)
 
 
+def extract_blocks(text: str, selector: str) -> str:
+    """
+    Find every block `<selector> { ... }` in text and return concatenated bodies.
+
+    Handles nested braces (e.g. selector inside @media). Selector match is
+    literal — pass exactly what appears in the stylesheet.
+    """
+    sel_escaped = re.escape(selector)
+    # selector must be preceded by start-of-text, whitespace, comma, or '}'
+    pattern = re.compile(rf'(?:^|[\s,}}/]){sel_escaped}\s*\{{')
+    bodies: list[str] = []
+    for m in pattern.finditer(text):
+        i = m.end()
+        depth = 1
+        start = i
+        while i < len(text) and depth > 0:
+            c = text[i]
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    bodies.append(text[start:i])
+                    break
+            i += 1
+    return "\n".join(bodies)
+
+
 def extract_palette(text: str) -> dict[str, tuple[int, int, int]]:
     out: dict[str, tuple[int, int, int]] = {}
     for match in VAR_RE.finditer(text):
@@ -127,32 +165,12 @@ def is_muted(token: str) -> bool:
 
 def is_surface(token: str) -> bool:
     base = short_name(token).lower()
-    # match whole-word-ish: bg, bg-deep, surface, surface-2, canvas
     parts = re.split(r"[-_]", base)
     return any(p in SURFACE_TOKENS for p in parts)
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description="WCAG contrast checker for CSS variable palettes.")
-    p.add_argument("file", help="CSS / HTML / JSX file containing --var declarations")
-    p.add_argument("--bg", help="token name to use as base (default: auto-detect --bg or --background)")
-    p.add_argument("--pairs", action="store_true", help="report ALL pairwise ratios")
-    p.add_argument("--strict", action="store_true", help="exit 1 if any non-muted token fails 4.5:1 vs base")
-    args = p.parse_args()
-
-    src = Path(args.file)
-    if not src.exists():
-        print(f"{RED}file not found:{RESET} {src}", file=sys.stderr)
-        return 2
-
-    text = src.read_text(encoding="utf-8", errors="replace")
-    palette = extract_palette(text)
-    if not palette:
-        print(f"{YELLOW}no CSS variables found in{RESET} {src}")
-        return 0
-
-    # decide base token
-    base = args.bg
+def pick_base(palette: dict[str, tuple[int, int, int]], requested: str | None) -> str | None:
+    base = requested
     if base and not base.startswith("--"):
         base = "--" + base
     if not base:
@@ -161,12 +179,21 @@ def main() -> int:
                 base = cand
                 break
     if not base or base not in palette:
-        print(f"{RED}no usable base token. pass --bg <name>.{RESET}", file=sys.stderr)
-        print(f"available: {', '.join(palette)}", file=sys.stderr)
-        return 2
+        return None
+    return base
 
+
+def report_palette(
+    palette: dict[str, tuple[int, int, int]],
+    base: str,
+    *,
+    label: str = "",
+    pairs: bool = False,
+) -> int:
+    """Print the contrast report for a single palette. Return failure count."""
     base_rgb = palette[base]
-    print(f"{BOLD}palette{RESET}  {DIM}{src}{RESET}")
+    heading = f"palette  {label}" if label else "palette"
+    print(f"{BOLD}{heading}{RESET}")
     print(f"{DIM}{'-' * 60}{RESET}")
     for name, rgb in palette.items():
         marker = f"{BOLD}<- base{RESET}" if name == base else ""
@@ -181,19 +208,17 @@ def main() -> int:
         if name == base:
             continue
         ratio = contrast_ratio(rgb, base_rgb)
-        label, color = grade(ratio)
+        glabel, color = grade(ratio)
         tags: list[str] = []
         if is_muted(name):
             tags.append(f"{DIM}(muted, advisory){RESET}")
         if is_surface(name):
             tags.append(f"{DIM}(surface — 3:1 floor){RESET}")
         tag_str = "  " + " ".join(tags) if tags else ""
-        print(f"  {name:<14} {ratio:5.2f}:1   {color}{label:<9}{RESET}{tag_str}")
+        print(f"  {name:<14} {ratio:5.2f}:1   {color}{glabel:<9}{RESET}{tag_str}")
 
         if is_surface(name):
-            # surface tokens just need to be distinguishable from base
             if ratio < 1.2 and name != base:
-                # too close to be a useful alternate surface
                 surface_warnings.append((name, ratio))
             continue
         if is_muted(name):
@@ -201,7 +226,7 @@ def main() -> int:
         if ratio < 4.5:
             failures.append((name, ratio))
 
-    if args.pairs:
+    if pairs:
         print()
         print(f"{BOLD}all pairwise ratios{RESET}")
         print(f"{DIM}{'-' * 60}{RESET}")
@@ -209,8 +234,8 @@ def main() -> int:
         for i, a in enumerate(names):
             for b in names[i + 1 :]:
                 ratio = contrast_ratio(palette[a], palette[b])
-                label, color = grade(ratio)
-                print(f"  {a:<14} {DIM}<>{RESET} {b:<14} {ratio:5.2f}:1   {color}{label}{RESET}")
+                glabel, color = grade(ratio)
+                print(f"  {a:<14} {DIM}<>{RESET} {b:<14} {ratio:5.2f}:1   {color}{glabel}{RESET}")
 
     print()
     if surface_warnings:
@@ -221,10 +246,77 @@ def main() -> int:
         print(f"{RED}{BOLD}failures{RESET}  {len(failures)} foreground token(s) below AA 4.5:1 vs {base}")
         for name, ratio in failures:
             print(f"  {RED}{name}{RESET}  {ratio:.2f}:1   needs lifting")
-        if args.strict:
-            return 1
     else:
         print(f"{GREEN}{BOLD}pass{RESET}  all foreground tokens clear AA 4.5:1 vs {base}")
+    return len(failures)
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="WCAG contrast checker for CSS variable palettes.")
+    p.add_argument("file", help="CSS / HTML / JSX file containing --var declarations")
+    p.add_argument("--bg", help="token name to use as base (default: auto-detect --bg or --background)")
+    p.add_argument("--pairs", action="store_true", help="report ALL pairwise ratios")
+    p.add_argument("--strict", action="store_true", help="exit 1 if any non-muted token fails 4.5:1 vs base")
+    p.add_argument("--scope", help="CSS selector to scope variable extraction within (e.g. ':root' or '[data-theme=\"dark\"]')")
+    p.add_argument("--check-themes", action="store_true", help="verify both :root AND [data-theme=\"dark\"] palettes; combined exit code")
+    args = p.parse_args()
+
+    src = Path(args.file)
+    if not src.exists():
+        print(f"{RED}error:{RESET} file not found: {src}", file=sys.stderr)
+        return 2
+
+    text = src.read_text(encoding="utf-8", errors="replace")
+
+    # === multi-theme mode ===
+    if args.check_themes:
+        theme_scopes = [
+            ("light", ":root"),
+            ("dark",  '[data-theme="dark"]'),
+        ]
+        total_failures = 0
+        for theme_label, scope in theme_scopes:
+            print(f"{BOLD}━━━ {theme_label.upper()} theme (scope: {scope}) ━━━{RESET}\n")
+            block_text = extract_blocks(text, scope)
+            if not block_text.strip():
+                print(f"{YELLOW}skipping {theme_label}: no block matching '{scope}' found{RESET}\n")
+                continue
+            palette = extract_palette(block_text)
+            if not palette:
+                print(f"{YELLOW}skipping {theme_label}: no CSS variables in block{RESET}\n")
+                continue
+            base = pick_base(palette, args.bg)
+            if not base:
+                print(f"{RED}skipping {theme_label}: no usable base token{RESET}\n")
+                total_failures += 1
+                continue
+            total_failures += report_palette(palette, base, label=f"({theme_label})", pairs=args.pairs)
+            print()
+        if total_failures > 0 and args.strict:
+            return 1
+        return 0
+
+    # === single-scope or whole-file mode ===
+    scan_text = extract_blocks(text, args.scope) if args.scope else text
+    if args.scope and not scan_text.strip():
+        print(f"{RED}error:{RESET} no block matching '{args.scope}' found", file=sys.stderr)
+        return 2
+
+    palette = extract_palette(scan_text)
+    if not palette:
+        print(f"{YELLOW}no CSS variables found in{RESET} {src}" + (f" within {args.scope}" if args.scope else ""))
+        return 0
+
+    base = pick_base(palette, args.bg)
+    if not base:
+        print(f"{RED}no usable base token. pass --bg <name>.{RESET}", file=sys.stderr)
+        print(f"available: {', '.join(palette)}", file=sys.stderr)
+        return 2
+
+    label = f"({args.scope})" if args.scope else f"{src}"
+    failures = report_palette(palette, base, label=label, pairs=args.pairs)
+    if failures > 0 and args.strict:
+        return 1
     return 0
 
 
